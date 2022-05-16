@@ -1,0 +1,71 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "eventing"
+authors = [
+    {name = "Tim Johansson", email = "tim.den.vilde@gmail.com"},
+]
+description = """\
+    A pythonic event emitter inspired by Node.js' \
+    EventEmitter and Python's logging libraries.\
+    """
+readme = "README.md"
+license = {file = "LICENSE"}
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+requires-python = ">=3.9,<4"
+dynamic = ["version"]
+
+[project.urls]
+Source = "https://github.com/tim-timmman/eventing"
+"Bug Tracker" = "https://github.com/tim-timman/eventing/issues"
+
+[project.optional-dependencies]
+test = [
+    "flake8",
+    "flake8-docstrings",
+    "flake8-import-order",
+    "pytest",
+    "pytest-asyncio",
+]
+doc = [
+    "sphinx",
+    "sphinx_rtd_theme",
+]
+dev = [
+    "pre-commit",
+    "tox",
+]
+
+[tool.flit.sdist]
+exclude = ["tests/", "docs/"]
+
+[tool.black]
+line_length = 79
+
+[tool.isort]
+# from black profile
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+line_length = 79
+# from google profile
+force_single_line = true
+force_sort_within_sections = true
+lexicographical = true
+single_line_exclusions = ["typing"]
+order_by_type = false
+group_by_package = true

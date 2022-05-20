@@ -60,6 +60,14 @@ class EventEmitter:
             warnings.warn("Attempted to remove listener not present.")
         return self
 
+    @validate_arguments(event_name_validator)
+    def emit(self, event_name: str, /, *args, **kwargs) -> bool:
+        listeners = self._listeners[event_name]
+        for listener in listeners:
+            listener(*args, **kwargs)
+
+        return bool(listeners)
+
 
 class RootEmitter(EventEmitter):
     def __init__(self):

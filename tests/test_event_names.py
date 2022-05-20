@@ -17,6 +17,7 @@ functions_using_event_name_with_args_signatures = [
     FuncBindSign("listeners", {}),
     FuncBindSign("add_listener", {"listener": a_listener}),
     FuncBindSign("remove_listener", {"listener": a_listener}),
+    FuncBindSign("emit", {}),
 ]
 
 

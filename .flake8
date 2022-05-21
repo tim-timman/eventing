@@ -1,9 +1,9 @@
 [flake8]
-application-import-names = eventing
-docstring-convention = google
-import-order-style = google
+application_import_names = eventing
+docstring_convention = google
+import_order_style = google
 exclude =
-    .git,
+    .git*,
     .mypy_cache,
     .pytest_cache,
     .tox,
@@ -12,17 +12,17 @@ exclude =
     venv
 # for ignore and select of E203, W503 and W504
 # see https://black.readthedocs.io/en/stable/faq.html#why-are-flake8-s-e203-and-w503-violated
-extend-ignore =
+extend_ignore =
     # D203: 1 blank line required before class docstring
     D203,
     # E203: Whitespace before ':'
     E203,
     # W503: Line break occurred before a binary operator
     W503,
-extend-select =
+extend_select =
     # W504: Line break occurred after a binary operator
     W504,
-per-file-ignores =
+per_file_ignores =
     # D100: Missing docstring in public module
     # D101: Missing docstring in public class
     # D102: Missing docstring in public method

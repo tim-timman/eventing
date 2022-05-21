@@ -32,20 +32,25 @@ Source = "https://github.com/tim-timmman/eventing"
 "Bug Tracker" = "https://github.com/tim-timman/eventing/issues"
 
 [project.optional-dependencies]
-test = [
-    "flake8",
-    "flake8-docstrings",
-    "flake8-import-order",
-    "pytest",
-    "pytest-asyncio",
+dev = [
+    "pre-commit",
+    "tox",
 ]
 doc = [
     "sphinx",
     "sphinx_rtd_theme",
 ]
-dev = [
-    "pre-commit",
-    "tox",
+style = [
+    "flake8",
+    "flake8-docstrings",
+    "flake8-import-order",
+]
+test = [
+    "pytest",
+    "pytest-asyncio",
+]
+typing = [
+    "mypy",
 ]
 
 [tool.flit.sdist]

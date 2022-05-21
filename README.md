@@ -17,7 +17,7 @@ This package uses [Semantic Versioning][semver].
 python3.10 -m venv --upgrade-deps venv
 source venv/bin/activate
 pip install flit
-flit install -s --deps=develop
+flit install -s --extras=all
 pre-commit install
 ```
 

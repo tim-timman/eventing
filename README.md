@@ -6,6 +6,10 @@ and Python's [logging][pylogging] libraries.
 [njs-ee]: https://nodejs.org/api/events.html#class-eventemitter
 [pylogging]: https://docs.python.org/3/library/logging.html
 
+![Tests][test-badge]
+
+[test-badge]: https://github.com/tim-timman/eventing/actions/workflows/tests.yaml/badge.svg
+
 This package uses [Semantic Versioning][semver].
 
 [semver]: https://semver.org/

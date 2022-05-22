@@ -1,5 +1,10 @@
 # Development and Publishing
 
+My aim is to use Test Driven Development (TDD) while developing this package.
+Partly to learn TDD but also for what TDD aims to grant you (when done well):
+a clear public API and trust that you won't unknowingly break it with new
+features or refactorings.
+
 ## Environment Setup
 
 Create a local virtualenv at the root of the repo:

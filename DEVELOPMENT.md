@@ -21,23 +21,20 @@ source venv/bin/activate
 > **Note:** from now on all commands are assumed to be run
 > within the activated virtualenv.
 
-This project uses [Flit][flit] as its Python packaging tool.
-Install it using:
+Install the project in editable mode and with all extras:
 ```
-pip install flit
-```
-[flit]: https://flit.pypa.io/en/latest/
-
-Install all dependencies for local development, and the package
-itself as a symlink:
-```
-flit install -s --extras=all
+pip install -e '.[dev,doc,style,test,typing]'
 ```
 
 Install the [pre-commit hook](#pre-commit-hook):
 ```
 pre-commit install
 ```
+
+> **Note:** the pre-commit hook depends on pytest being installed in the local
+> environment. It's listed under extra `dev`, but pytest is listed only under
+> `test`. Unfortunately, you can't reference other extras under an extra when
+> using just pyproject.toml's `[project.optional-dependencies]`.
 
 ### pre-commit hook
 [pre-commit][pre-commit] used as a git pre-commit hook. It runs several checks

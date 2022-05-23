@@ -28,29 +28,30 @@ requires-python = ">=3.9,<4"
 dynamic = ["version"]
 
 [project.urls]
-Source = "https://github.com/tim-timmman/eventing"
-"Bug Tracker" = "https://github.com/tim-timman/eventing/issues"
+Documentation = "https://eventing.readthedocs.io/en/latest/"
+Repository = "https://github.com/tim-timmman/eventing"
 
 [project.optional-dependencies]
 dev = [
-    "pre-commit",
-    "tox",
+    "flit ==3.7.1",
+    "pre-commit ==2.19.0",
+    "tox ==3.25.0",
 ]
 doc = [
-    "sphinx",
-    "sphinx_rtd_theme",
+    "sphinx ==4.5.0",
+    "sphinx_rtd_theme ==1.0.0",
 ]
 style = [
-    "flake8",
-    "flake8-docstrings",
-    "flake8-import-order",
+    "flake8 ==4.0.1",
+    "flake8-docstrings ==1.6.0",
+    "flake8-import-order ==0.18.1",
 ]
 test = [
-    "pytest",
-    "pytest-asyncio",
+    "pytest ==7.1.2",
+    "pytest-asyncio ==0.18.3",
 ]
 typing = [
-    "mypy",
+    "mypy ==0.950",
 ]
 
 [tool.flit.sdist]

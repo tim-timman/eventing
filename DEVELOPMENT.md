@@ -8,33 +8,32 @@ features or refactorings.
 ## Environment Setup
 
 Create a local virtualenv at the root of the repo:
-```
+```shell
 python3.10 -m venv --upgrade-deps venv
 ```
 This will create a virtualenv at `venv/`
 
-
 Activate the virtualenv:
-```
+```shell
 source venv/bin/activate
 ```
 > **Note:** from now on all commands are assumed to be run
 > within the activated virtualenv.
 
 Install the project in editable mode and with all extras:
-```
-pip install -e '.[dev,doc,style,test,typing]'
+```shell
+pip install -e '.[dev,doc,pre-commit,test]'
 ```
 
 Install the [pre-commit hook](#pre-commit-hook):
-```
+```shell
 pre-commit install
 ```
 
-> **Note:** the pre-commit hook depends on pytest being installed in the local
-> environment. It's listed under extra `dev`, but pytest is listed only under
-> `test`. Unfortunately, you can't reference other extras under an extra when
-> using just pyproject.toml's `[project.optional-dependencies]`.
+> **Note:** the pre-commit hook depends on the extra `test` also being installed
+> in the venv. Unfortunately, you can't reference other extras under an extra
+> when using just pyproject.toml's `[project.optional-dependencies]`, so this is
+> a necessary compromise.
 
 ### pre-commit hook
 [pre-commit][pre-commit] used as a git pre-commit hook. It runs several checks
@@ -46,13 +45,23 @@ and make sure tests are passing.
 Aside from running on git's pre-commit hook, it can be manually run on the
 current working tree. It will run against staged files, only applying any
 modifications if there are no unstaged ones.
+```shell
+pre-commit run [hook]
 ```
-pre-commit run
+> **Notice:** `[hook]` is optional. Substitute it to run a specific hook;
+> without, all hooks are run.
+
+> **Hint:** hooks are defined in
+> [`.pre-commit-config.yaml`](.pre-commit-config.yaml).
+
+If you want to run it on the dirty working tree, run it with `--all-files`:
+```shell
+pre-commit run --all-files [hook]
 ```
 
 ## Local testing
-These are all run as part of pre-commit on commit (except for tox; too slow)
-but can also be run manually against the dirty working tree.
+pre-commit is configured to run the testing of `pytest`, `flake8` (for code
+style and docstrings) and `mypy` (for static typechecking).
 
 ### pytest
 Tests are written using [pytest][pytest] with the
@@ -61,26 +70,16 @@ Tests are written using [pytest][pytest] with the
 [pytest]: https://docs.pytest.org/en/latest/contents.html
 [pytest-asyncio]: https://github.com/pytest-dev/pytest-asyncio
 
-```
+```shell
 pytest
-```
-
-### flake8
-Run codestyle, and docstring checks manually.
-```
-flake8
-```
-
-### mypy
-Run mypy statical typechecking over the code manually.
-```
-mypy ./
+# or
+pre-commit run pytest --all-files
 ```
 
 ### tox
-Run the above [local testing](#local-testing) checks against the built package
-in isolated environments across supported python versions.
-```
+Run the `pytest` against the built package in isolated environments across
+supported python versions, `mypy` and `flake8`.
+```shell
 tox
 ```
 
@@ -96,7 +95,7 @@ established.
 
 ### Building docs
 Build the docs from Google style docstrings in the package.
-```
+```shell
 tox -e docs
 ```
 
@@ -105,7 +104,7 @@ Serve the built docs at <http://[::1]:8000> using python's
 [http.server][http.server] module. Automatically attempt to open your web
 browser at that URI using python's [webbrowser][webbrowser] module. Use
 `Ctrl-C` to kill the webserver.
-```
+```shell
 tox -e serve-docs
 ```
 
@@ -142,24 +141,24 @@ This attribute is automatically used by Flit when building the package.
 
 ### Build the package
 Make sure the package builds using Flit:
-```
+```shell
 flit build
 ```
 
 ### Add a Git Tag
 Versions are tagged using annotated git tags:
-```
+```shell
 git tag -a <version> -m ''
 ```
 
 Make sure to push the tag with:
-```
+```shell
 git push --follow-tags
 ```
 
 ### Publish the package to PyPI
 Publish the package to PyPI using Flit:
-```
+```shell
 flit publish
 ```
 

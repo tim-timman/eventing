@@ -139,6 +139,14 @@ This attribute is automatically used by Flit when building the package.
 
 [version]: src/eventing/__init__.py#L9
 
+### Create the commit
+The `__version__` field in the package's `__init__.py` and CHANGELOG.md should
+be the only two changes in a release commit.
+```shell
+git add CHANGELOG.md src/eventing/__init__.py
+git commit -m 'Release <semver>'
+```
+
 ### Build the package
 Make sure the package builds using Flit:
 ```shell
@@ -148,7 +156,7 @@ flit build
 ### Add a Git Tag
 Versions are tagged using annotated git tags:
 ```shell
-git tag -a <version> -m ''
+git tag -a 'v<semver>' -m ''
 ```
 
 Make sure to push the tag with:

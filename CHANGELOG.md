@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning][semver].
 [semver]: https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
+
+## [0.1.0] - 2022-05-24
 ### Added
 - The eventing package with initial synchronous event emitting functionality
   using Flit build system.
@@ -27,4 +29,5 @@ and this project adheres to [Semantic Versioning][semver].
 - Read the Docs configuration
 - GitHub Actions configuration running tests on push and pull requests
 
-[Unreleased]: https://github.com/tim-timman/eventing/commits/master
+[Unreleased]: https://github.com/tim-timman/eventing/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/tim-timman/eventing/releases/tag/v0.1.0

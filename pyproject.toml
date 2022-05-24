@@ -28,9 +28,9 @@ requires-python = ">=3.9,<4"
 dynamic = ["version"]
 
 [project.urls]
-documentation = "https://eventing.readthedocs.io/en/latest/"
-repository = "https://github.com/tim-timmman/eventing"
-changelog = "https://github.com/tim-timman/eventing/blob/master/CHANGELOG.md"
+Documentation = "https://eventing.readthedocs.io/en/latest/"
+Repository = "https://github.com/tim-timman/eventing"
+Changelog = "https://github.com/tim-timman/eventing/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [

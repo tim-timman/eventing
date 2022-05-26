@@ -4,6 +4,7 @@ Aim to find an implementation not changing the call signature but while
 avoiding RecursionError in case a listener itself emits an event.
 """
 
+import contextvars
 import inspect
 import sys
 import threading
@@ -91,6 +92,37 @@ class ThreadingLocalDeferredEmitter(Emitter):
                 listeners = self._listeners.copy()
 
 
+class ContextVarDeferredEmitter(Emitter):
+    """Implements deferred emits by use of contextvars.ContextVar storage"""
+    _deferred_emits_var = contextvars.ContextVar("_deferred_emits")
+
+    def emit(self, *args, **kwargs):
+        try:
+            deferred_emits = self._deferred_emits_var.get()
+        except LookupError:
+            # This means this is the first call to emit
+            deferred_emits = []
+            token = self._deferred_emits_var.set(deferred_emits)
+        else:
+            # This means we were recursively called
+            deferred_emits.append((args, kwargs))
+            return
+
+        # copy the current listeners as it may be modified as part of calling them
+        listeners = self._listeners.copy()
+        while True:
+            for listener in listeners:
+                listener(*args, **kwargs)
+            try:
+                args, kwargs = deferred_emits.pop(0)
+            except IndexError:
+                self._deferred_emits_var.reset(token)
+                return
+            else:
+                # create new listeners
+                listeners = self._listeners.copy()
+
+
 class IntrospectiveDeferredEmitter(Emitter):
     """Implements deferred emits by use of stack introspection"""
     def emit(self, *args, **kwargs):
@@ -156,4 +188,5 @@ def test(emitter_cls: type[Emitter]):
 if __name__ == "__main__":
     test(PatchDeferredEmitter)
     test(ThreadingLocalDeferredEmitter)
+    test(ContextVarDeferredEmitter)
     test(IntrospectiveDeferredEmitter)

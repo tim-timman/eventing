@@ -8,8 +8,16 @@ exclude =
     .pytest_cache,
     .tox,
     __pycache__,
+    dist,
+    venv,
+    # Below are written unnecessarily weird due to a bug in flake8 (see issue)
+    # that occurs due to pre-commit passing individual filepaths as arguments.
+    # The above are not affected as pre-commit never includes ignored files,
+    # but they are kept in case one wants to run `flake8` without pre-commit.
+    # https://github.com/PyCQA/flake8/issues/1074
     docs/source/conf.py,
-    venv
+    # we don't care about experiments
+    experiments/*
 # for ignore and select of E203, W503 and W504
 # see https://black.readthedocs.io/en/stable/faq.html#why-are-flake8-s-e203-and-w503-violated
 extend_ignore =

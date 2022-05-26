@@ -21,6 +21,7 @@ repos:
     rev: 22.3.0
     hooks:
       - id: black
+        exclude: "^experiments\/"
   - repo: https://github.com/PyCQA/isort
     rev: 5.10.1
     hooks:

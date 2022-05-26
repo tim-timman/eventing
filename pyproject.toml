@@ -52,6 +52,7 @@ test = [
 [tool.flit.sdist]
 exclude = [
     ".github/",
+    "experiments/",
 ]
 
 [tool.black]

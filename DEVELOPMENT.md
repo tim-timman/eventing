@@ -44,7 +44,7 @@ and make sure tests are passing.
 
 Aside from running on git's pre-commit hook, it can be manually run on the
 current working tree. It will run against staged files, only applying any
-modifications if there are no unstaged ones.
+modifications if there are no unstaged ones, unless run with `--all-files`.
 ```shell
 pre-commit run [hook]
 ```
@@ -54,10 +54,11 @@ pre-commit run [hook]
 > **Hint:** hooks are defined in
 > [`.pre-commit-config.yaml`](.pre-commit-config.yaml).
 
-If you want to run it on the dirty working tree, run it with `--all-files`:
+If you want to run it on the dirty working tree, run it with `--all-files | -a`:
 ```shell
-pre-commit run --all-files [hook]
+pre-commit run [hook] -a
 ```
+> **Note:** pre-commit only ever runs on tracked files, even with `--all-files`.
 
 ## Local testing
 pre-commit is configured to run the testing of `pytest`, `flake8` (for code
@@ -72,8 +73,6 @@ Tests are written using [pytest][pytest] with the
 
 ```shell
 pytest
-# or
-pre-commit run pytest --all-files
 ```
 
 ### tox

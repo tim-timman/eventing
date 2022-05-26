@@ -41,7 +41,8 @@ repos:
     hooks:
       - id: pytest
         name: pytest
-        entry: venv/bin/pytest
-        language: script
+        # Only run pytest on staged files, in accordance with pre-commit
+        entry: git ls-files | grep '^tests/' | xargs venv/bin/pytest
+        language: system
         pass_filenames: false
         always_run: true

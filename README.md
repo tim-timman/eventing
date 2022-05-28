@@ -1,11 +1,17 @@
 # eventing
 [![Tests][test-badge]][test-uri]
 [![Documentation Status][rtd-badge]][rtd-uri]
+[![PyPI][pypi-badge]][pypi-uri]
+[![License][license-badge]][license-uri]
 
 [test-badge]: https://github.com/tim-timman/eventing/actions/workflows/tests.yaml/badge.svg?branch=master&event=push
 [test-uri]: https://github.com/tim-timman/eventing/actions/workflows/tests.yaml
 [rtd-badge]: https://readthedocs.org/projects/eventing/badge/?version=latest
 [rtd-uri]: https://eventing.readthedocs.io/en/latest/?badge=latest
+[pypi-badge]: https://img.shields.io/pypi/v/eventing
+[pypi-uri]: https://pypi.org/project/eventing/
+[license-badge]: https://img.shields.io/pypi/l/eventing
+[license-uri]: https://github.com/tim-timman/eventing/blob/master/LICENSE
 
 A pythonic event emitter inspired by Node.js' [EventEmitter][njs-ee]
 and Python's [logging][pylogging] libraries.

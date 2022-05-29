@@ -10,6 +10,7 @@ __version__ = "0.1.0"
 
 import asyncio
 from collections import defaultdict
+from contextvars import ContextVar
 import warnings
 
 from .validation import event_name_validator
@@ -35,6 +36,7 @@ class Manager:
 class EventEmitter:
     manager: Manager
     root: RootEmitter
+    _deferred_emits_var: ContextVar[list] = ContextVar("deferred_emits")
 
     def __init__(self, name: str):
         self.name = name
@@ -63,15 +65,38 @@ class EventEmitter:
 
     @validate_arguments(event_name_validator)
     def emit(self, event_name: str, /, *args, **kwargs) -> bool:
-        listeners = self._listeners[event_name]
-        for listener in listeners:
-            if asyncio.iscoroutinefunction(listener):
-                loop = asyncio.get_running_loop()
-                loop.create_task(listener(*args, **kwargs))
-            else:
-                listener(*args, **kwargs)
+        try:
+            deferred_emits = self._deferred_emits_var.get()
+        except LookupError:
+            # Initial call to emit, setup to catch and handle eventual
+            # recursive calls
+            deferred_emits = []
+            token = self._deferred_emits_var.set(deferred_emits)
+        else:
+            # We've been recursively called as a result by a listener
+            deferred_emits.append((event_name, args, kwargs))
+            # TODO: Check to see if this is actually valid since we defer
+            return bool(self._listeners[event_name])
 
-        return bool(listeners)
+        listeners = self._listeners[event_name]
+        # We must store this first's call return value as we might
+        # overwrite `listeners`
+        ret = bool(listeners)
+        while True:
+            for listener in listeners:
+                if asyncio.iscoroutinefunction(listener):
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(listener(*args, **kwargs))
+                else:
+                    listener(*args, **kwargs)
+            try:
+                event_name, args, kwargs = deferred_emits.pop(0)
+            except IndexError:
+                # We've handled all deferred calls
+                self._deferred_emits_var.reset(token)
+                return ret
+            else:
+                listeners = self._listeners[event_name]
 
 
 class RootEmitter(EventEmitter):

@@ -1,3 +1,4 @@
+import sys
 from unittest.mock import Mock
 
 import pytest
@@ -70,3 +71,31 @@ def test_listener_not_call_for_same_event_on_different_emitter(
     bar_ee = eventing.get_emitter("bar")
     bar_ee.emit("foo")
     foo_listener.assert_not_called()
+
+
+def test_listener_calling_emit_must_not_crash(ee):
+    call_count = 0
+
+    def recursive_listener(depth):
+        nonlocal call_count
+        call_count += 1
+        # So that we don't create an infinite loop
+        depth -= 1
+        if depth > 0:
+            ee.emit("recurse", depth)
+
+    ee.add_listener("recurse", recursive_listener)
+
+    # Set the recursion limit to something smaller to speed up the test,
+    # but not too small that we don't accidentally trigger it.
+    call_depth = 200
+    prev_recursion_limit = sys.getrecursionlimit()
+    # Set it to something smaller to ensure we would hit it (if we recurse).
+    # Realistically we would already do due to the stack depth from pytest.
+    sys.setrecursionlimit(call_depth - 1)
+    try:
+        ee.emit("recurse", call_depth)
+    finally:
+        sys.setrecursionlimit(prev_recursion_limit)
+
+    assert call_count == call_depth

@@ -99,3 +99,22 @@ def test_listener_calling_emit_must_not_crash(ee):
         sys.setrecursionlimit(prev_recursion_limit)
 
     assert call_count == call_depth
+
+
+def test_listener_that_removes_itself_and_reemits_is_only_called_once(ee):
+    def remove_and_reemit():
+        ee.emit("foo")
+        ee.remove_listener("foo", side_effect_listener)
+
+    side_effect_listener = Mock(
+        side_effect=remove_and_reemit, return_value=None
+    )
+    ee.add_listener("foo", side_effect_listener)
+
+    # To see that everything else runs as supposed
+    mock_listener = Mock(return_value=None)
+    ee.add_listener("foo", mock_listener)
+
+    ee.emit("foo")
+    assert side_effect_listener.call_count == 1
+    assert mock_listener.call_count == 2

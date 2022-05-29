@@ -78,7 +78,8 @@ class EventEmitter:
             # TODO: Check to see if this is actually valid since we defer
             return bool(self._listeners[event_name])
 
-        listeners = self._listeners[event_name]
+        # Get a copy as it may change in recursive calls
+        listeners = self._listeners[event_name].copy()
         # We must store this first's call return value as we might
         # overwrite `listeners`
         ret = bool(listeners)
@@ -96,7 +97,7 @@ class EventEmitter:
                 self._deferred_emits_var.reset(token)
                 return ret
             else:
-                listeners = self._listeners[event_name]
+                listeners = self._listeners[event_name].copy()
 
 
 class RootEmitter(EventEmitter):

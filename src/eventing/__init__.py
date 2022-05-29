@@ -8,6 +8,7 @@ from __future__ import annotations
 
 __version__ = "0.1.0"
 
+import asyncio
 from collections import defaultdict
 import warnings
 
@@ -64,7 +65,11 @@ class EventEmitter:
     def emit(self, event_name: str, /, *args, **kwargs) -> bool:
         listeners = self._listeners[event_name]
         for listener in listeners:
-            listener(*args, **kwargs)
+            if asyncio.iscoroutinefunction(listener):
+                loop = asyncio.get_running_loop()
+                loop.create_task(listener(*args, **kwargs))
+            else:
+                listener(*args, **kwargs)
 
         return bool(listeners)
 

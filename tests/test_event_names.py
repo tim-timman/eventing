@@ -10,6 +10,7 @@ import eventing
         "add_listener",
         "remove_listener",
         "emit",
+        "on",
     ]
 )
 def mocked_event_name_func(request, auto_bind_func_with_mocks_from_signature):

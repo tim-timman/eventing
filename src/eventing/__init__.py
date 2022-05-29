@@ -52,7 +52,7 @@ class EventEmitter:
 
     @validate_arguments(event_name_validator)
     def add_listener(self, event_name: str, /, listener) -> EventEmitter:
-        self._listeners[event_name].append(listener)
+        self._on(event_name, listener)
         return self
 
     @validate_arguments(event_name_validator)
@@ -98,6 +98,17 @@ class EventEmitter:
                 return ret
             else:
                 listeners = self._listeners[event_name].copy()
+
+    @validate_arguments(event_name_validator)
+    def on(self, event_name: str, /):
+        def inner(listener):
+            self._on(event_name, listener)
+            return listener
+
+        return inner
+
+    def _on(self, event_name: str, /, listener):
+        self._listeners[event_name].append(listener)
 
 
 class RootEmitter(EventEmitter):

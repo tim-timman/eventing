@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning][semver].
   to) without potential for `RecursionError`.
 - Support listeners removing themselves.
 - Coverage report
+- Decorator `@ee.on(...)` to add a listener for an event.
 
 ## [0.1.0] - 2022-05-24
 ### Added

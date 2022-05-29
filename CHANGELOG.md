@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning][semver].
 [semver]: https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
+### Added
+- Support coroutine functions as listeners. Not threadsafe.
+- Support listeners that emit events (including the one it's listening
+  to) without potential for `RecursionError`.
+- Support listeners removing themselves.
 
 ## [0.1.0] - 2022-05-24
 ### Added

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning][semver].
 - Support listeners that emit events (including the one it's listening
   to) without potential for `RecursionError`.
 - Support listeners removing themselves.
+- Coverage report
 
 ## [0.1.0] - 2022-05-24
 ### Added

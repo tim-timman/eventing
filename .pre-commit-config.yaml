@@ -42,7 +42,7 @@ repos:
       - id: pytest
         name: pytest
         # Only run pytest on staged files, in accordance with pre-commit
-        entry: sh -c 'git ls-files | grep ^tests/ | xargs venv/bin/pytest'
+        entry: sh -c 'git ls-files | grep ^tests/ | xargs venv/bin/pytest --no-cov'
         language: system
         pass_filenames: false
         always_run: true

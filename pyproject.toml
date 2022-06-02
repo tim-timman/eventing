@@ -26,6 +26,13 @@ classifiers = [
 ]
 requires-python = ">=3.9,<4"
 dynamic = ["version"]
+keywords = [
+    "event",
+    "emitter",
+    "eventemitter",
+    "logging",
+    "node",
+]
 
 [project.urls]
 Documentation = "https://eventing.readthedocs.io/en/latest/"

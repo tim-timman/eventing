@@ -9,8 +9,11 @@ from __future__ import annotations
 __version__ = "0.1.0"
 
 import asyncio
+from asyncio import AbstractEventLoop
 from collections import defaultdict
+import contextlib
 from contextvars import ContextVar
+from typing import Iterator, Optional
 import warnings
 
 from .validation import event_name_validator
@@ -41,6 +44,7 @@ class EventEmitter:
     def __init__(self, name: str):
         self.name = name
         self._listeners: defaultdict[str, list] = defaultdict(list)
+        self._loop: Optional[AbstractEventLoop] = None
 
     @validate_arguments(event_name_validator)
     def listener_count(self, event_name: str, /) -> int:
@@ -65,6 +69,22 @@ class EventEmitter:
 
     @validate_arguments(event_name_validator)
     def emit(self, event_name: str, /, *args, **kwargs) -> bool:
+        with self._defer_emits(event_name, args, kwargs) as deferred_emits:
+            listeners = self._listeners[event_name].copy()
+            # We must store this first's call return value as we might
+            # overwrite `listeners`
+            return_value = bool(listeners)
+
+            for event_name, args, kwargs in deferred_emits:
+                for listener in listeners:
+                    self._emit(listener, args, kwargs)
+                listeners = self._listeners[event_name].copy()
+
+            # TODO: Check to see if this is actually valid since we defer
+            return return_value
+
+    @contextlib.contextmanager
+    def _defer_emits(self, event_name, args, kwargs) -> Iterator:
         try:
             deferred_emits = self._deferred_emits_var.get()
         except LookupError:
@@ -72,32 +92,46 @@ class EventEmitter:
             # recursive calls
             deferred_emits = []
             token = self._deferred_emits_var.set(deferred_emits)
+
+            def defer_generator():
+                yield event_name, args, kwargs
+                try:
+                    while True:
+                        yield deferred_emits.pop(0)
+                except IndexError:
+                    return
+
+            # Give this initial caller an iterator that will return the first
+            # call and all potential deferred emits to come
+            defer_iterator = defer_generator()
         else:
             # We've been recursively called as a result by a listener
             deferred_emits.append((event_name, args, kwargs))
-            # TODO: Check to see if this is actually valid since we defer
-            return bool(self._listeners[event_name])
+            # Return an empty iterator since we've deferred our emit
+            # to be handled by the owner
+            defer_iterator = iter(())
 
-        # Get a copy as it may change in recursive calls
-        listeners = self._listeners[event_name].copy()
-        # We must store this first's call return value as we might
-        # overwrite `listeners`
-        ret = bool(listeners)
-        while True:
-            for listener in listeners:
-                if asyncio.iscoroutinefunction(listener):
-                    loop = asyncio.get_running_loop()
-                    loop.create_task(listener(*args, **kwargs))
-                else:
-                    listener(*args, **kwargs)
+        try:
+            yield defer_iterator
+        finally:
             try:
-                event_name, args, kwargs = deferred_emits.pop(0)
-            except IndexError:
-                # We've handled all deferred calls
                 self._deferred_emits_var.reset(token)
-                return ret
+            except NameError:
+                pass
+
+    def _emit(self, listener, args, kwargs):
+        if asyncio.iscoroutinefunction(listener):
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            coro = listener(*args, **kwargs)
+            if loop is None or loop != self._loop:
+                asyncio.run_coroutine_threadsafe(coro, self._loop)
             else:
-                listeners = self._listeners[event_name].copy()
+                self._loop.create_task(coro)
+        else:
+            listener(*args, **kwargs)
 
     @validate_arguments(event_name_validator)
     def on(self, event_name: str, /):
@@ -109,6 +143,9 @@ class EventEmitter:
 
     def _on(self, event_name: str, /, listener):
         self._listeners[event_name].append(listener)
+
+    def set_event_loop(self, loop: AbstractEventLoop):
+        self._loop = loop
 
 
 class RootEmitter(EventEmitter):

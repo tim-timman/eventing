@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning][semver].
 
 ## [Unreleased]
 ### Added
-- Support coroutine functions as listeners. Not threadsafe.
+- Support coroutine functions (`async def`) as listeners. Threadsafe. The event
+  loop to use has to be set before a coroutine function listener is emitted, eg.
+  `ee.set_event_loop(asyncio.get_running_loop())`.
 - Support listeners that emit events (including the one it's listening
   to) without potential for `RecursionError`.
 - Support listeners removing themselves.

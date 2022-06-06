@@ -22,9 +22,7 @@ def add_async_mock_listener(ee):
 
 
 @pytest.mark.asyncio
-async def test_coroutine_listener_called(
-    ee, add_async_mock_listener, event_loop
-):
+async def test_coroutine_listener_called(ee, add_async_mock_listener, event_loop):
     ee.set_event_loop(event_loop)
     async_foo_listener = add_async_mock_listener("foo")
     ee.emit("foo")
@@ -34,9 +32,7 @@ async def test_coroutine_listener_called(
 
 
 @pytest.mark.asyncio
-async def test_emitting_from_different_thread(
-    ee, add_async_mock_listener, event_loop
-):
+async def test_emitting_from_different_thread(ee, add_async_mock_listener, event_loop):
     ee.set_event_loop(event_loop)
     async_foo_listener = add_async_mock_listener("foo")
 

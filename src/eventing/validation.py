@@ -29,8 +29,7 @@ def validate_arguments(*validators: Callable[..., None]):
 
             for validator, arg_names in validator_arg_names_pairs:
                 v_kwargs = {
-                    arg_name: bound_args.arguments[arg_name]
-                    for arg_name in arg_names
+                    arg_name: bound_args.arguments[arg_name] for arg_name in arg_names
                 }
                 validator(**v_kwargs)
             return f(*args, **kwargs)

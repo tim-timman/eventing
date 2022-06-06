@@ -2,6 +2,9 @@
 application_import_names = eventing
 docstring_convention = google
 import_order_style = google
+# line length from black default config
+max_line_length = 88
+max_complexity = 10
 exclude =
     .git*,
     .mypy_cache,

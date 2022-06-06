@@ -64,9 +64,7 @@ def test_emit_returns_true_if_it_had_listeners(ee, add_mock_listener):
     assert ee.emit("foo") is True
 
 
-def test_listener_not_call_for_same_event_on_different_emitter(
-    ee, add_mock_listener
-):
+def test_listener_not_call_for_same_event_on_different_emitter(ee, add_mock_listener):
     foo_listener = add_mock_listener("foo")
     bar_ee = eventing.get_emitter("bar")
     bar_ee.emit("foo")
@@ -106,9 +104,7 @@ def test_listener_that_removes_itself_and_reemits_is_only_called_once(ee):
         ee.emit("foo")
         ee.remove_listener("foo", side_effect_listener)
 
-    side_effect_listener = Mock(
-        side_effect=remove_and_reemit, return_value=None
-    )
+    side_effect_listener = Mock(side_effect=remove_and_reemit, return_value=None)
     ee.add_listener("foo", side_effect_listener)
 
     # To see that everything else runs as supposed

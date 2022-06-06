@@ -16,9 +16,7 @@ def test_listener_with_on_decorator_is_added_to_listeners(ee):
     assert ee.listeners("foo") == [listener]
 
 
-METHODS_ON_CLASS_SKIP_REASON = (
-    "Wishful functionality; might not be a good idea"
-)
+METHODS_ON_CLASS_SKIP_REASON = "Wishful functionality; might not be a good idea"
 
 
 @pytest.mark.skip(METHODS_ON_CLASS_SKIP_REASON)

@@ -4,8 +4,10 @@ Aim to find an implementation not changing the call signature but while
 avoiding RecursionError in case a listener itself emits an event.
 """
 
+import collections
 import contextvars
 import inspect
+import queue
 import sys
 import threading
 import timeit
@@ -92,7 +94,7 @@ class ThreadingLocalDeferredEmitter(Emitter):
                 listeners = self._listeners.copy()
 
 
-class ContextVarDeferredEmitter(Emitter):
+class ContextVarWithListDeferredEmitter(Emitter):
     """Implements deferred emits by use of contextvars.ContextVar storage"""
     _deferred_emits_var = contextvars.ContextVar("_deferred_emits")
 
@@ -115,6 +117,68 @@ class ContextVarDeferredEmitter(Emitter):
                 listener(*args, **kwargs)
             try:
                 args, kwargs = deferred_emits.pop(0)
+            except IndexError:
+                self._deferred_emits_var.reset(token)
+                return
+            else:
+                # create new listeners
+                listeners = self._listeners.copy()
+
+
+class ContextVarWithSimpleQueueDeferredEmitter(Emitter):
+    """Implements deferred emits by use of contextvars.ContextVar storage"""
+    _deferred_emits_var = contextvars.ContextVar("_deferred_emits")
+
+    def emit(self, *args, **kwargs):
+        try:
+            deferred_emits = self._deferred_emits_var.get()
+        except LookupError:
+            # This means this is the first call to emit
+            deferred_emits = queue.SimpleQueue()
+            token = self._deferred_emits_var.set(deferred_emits)
+        else:
+            # This means we were recursively called
+            deferred_emits.put_nowait((args, kwargs))
+            return
+
+        # copy the current listeners as it may be modified as part of calling them
+        listeners = self._listeners.copy()
+        while True:
+            for listener in listeners:
+                listener(*args, **kwargs)
+            try:
+                args, kwargs = deferred_emits.get_nowait()
+            except queue.Empty:
+                self._deferred_emits_var.reset(token)
+                return
+            else:
+                # create new listeners
+                listeners = self._listeners.copy()
+
+
+class ContextVarWithDequeDeferredEmitter(Emitter):
+    """Implements deferred emits by use of contextvars.ContextVar storage"""
+    _deferred_emits_var = contextvars.ContextVar("_deferred_emits")
+
+    def emit(self, *args, **kwargs):
+        try:
+            deferred_emits = self._deferred_emits_var.get()
+        except LookupError:
+            # This means this is the first call to emit
+            deferred_emits = collections.deque()
+            token = self._deferred_emits_var.set(deferred_emits)
+        else:
+            # This means we were recursively called
+            deferred_emits.append((args, kwargs))
+            return
+
+        # copy the current listeners as it may be modified as part of calling them
+        listeners = self._listeners.copy()
+        while True:
+            for listener in listeners:
+                listener(*args, **kwargs)
+            try:
+                args, kwargs = deferred_emits.popleft()
             except IndexError:
                 self._deferred_emits_var.reset(token)
                 return
@@ -188,5 +252,7 @@ def test(emitter_cls: type[Emitter]):
 if __name__ == "__main__":
     test(PatchDeferredEmitter)
     test(ThreadingLocalDeferredEmitter)
-    test(ContextVarDeferredEmitter)
+    test(ContextVarWithListDeferredEmitter)
+    test(ContextVarWithSimpleQueueDeferredEmitter)
+    test(ContextVarWithDequeDeferredEmitter)
     test(IntrospectiveDeferredEmitter)

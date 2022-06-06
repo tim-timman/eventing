@@ -11,6 +11,7 @@ __version__ = "0.2.0"
 import asyncio
 from asyncio import AbstractEventLoop
 from collections import defaultdict
+from collections import deque
 import contextlib
 from contextvars import ContextVar
 from typing import Iterator, Optional
@@ -39,7 +40,7 @@ class Manager:
 class EventEmitter:
     manager: Manager
     root: RootEmitter
-    _deferred_emits_var: ContextVar[list] = ContextVar("deferred_emits")
+    _deferred_emits_var: ContextVar[deque] = ContextVar("deferred_emits")
 
     def __init__(self, name: str):
         self.name = name
@@ -69,19 +70,19 @@ class EventEmitter:
 
     @validate_arguments(event_name_validator)
     def emit(self, event_name: str, /, *args, **kwargs) -> bool:
-        with self._defer_emits(event_name, args, kwargs) as deferred_emits:
-            listeners = self._listeners[event_name].copy()
-            # We must store this first's call return value as we might
-            # overwrite `listeners`
-            return_value = bool(listeners)
+        listeners = self._listeners[event_name].copy()
+        # We must store this first's call return value as we might
+        # overwrite `listeners`
+        return_value = bool(listeners)
 
+        with self._defer_emits(event_name, args, kwargs) as deferred_emits:
             for event_name, args, kwargs in deferred_emits:
                 for listener in listeners:
                     self._emit(listener, args, kwargs)
                 listeners = self._listeners[event_name].copy()
 
-            # TODO: Check to see if this is actually valid since we defer
-            return return_value
+        # TODO: Check to see if this is actually valid since we defer
+        return return_value
 
     @contextlib.contextmanager
     def _defer_emits(self, event_name, args, kwargs) -> Iterator:
@@ -90,14 +91,13 @@ class EventEmitter:
         except LookupError:
             # Initial call to emit, setup to catch and handle eventual
             # recursive calls
-            deferred_emits = []
+            deferred_emits = deque(((event_name, args, kwargs),))
             token = self._deferred_emits_var.set(deferred_emits)
 
             def defer_generator():
-                yield event_name, args, kwargs
                 try:
                     while True:
-                        yield deferred_emits.pop(0)
+                        yield deferred_emits.popleft()
                 except IndexError:
                     return
 

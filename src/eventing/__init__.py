@@ -147,6 +147,9 @@ class EventEmitter:
     def set_event_loop(self, loop: AbstractEventLoop):
         self._loop = loop
 
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} {self.name}>"
+
 
 class RootEmitter(EventEmitter):
     def __init__(self):

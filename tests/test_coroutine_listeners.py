@@ -38,3 +38,12 @@ async def test_emitting_from_different_thread(ee, add_async_mock_listener, event
 
     await asyncio.to_thread(ee.emit, "foo")
     async_foo_listener.assert_awaited_once_with()
+
+
+def test_raise_error_on_emit_with_coroutine_listener_and_no_event_loop(
+    ee, add_async_mock_listener
+):
+    add_async_mock_listener("foo")
+
+    with pytest.raises(eventing.NoEventLoopError):
+        ee.emit("foo")

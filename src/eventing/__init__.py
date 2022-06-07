@@ -14,27 +14,72 @@ from collections import defaultdict
 from collections import deque
 import contextlib
 from contextvars import ContextVar
-from typing import Iterator, Optional
+from typing import Iterator
 import warnings
 
+from .exceptions import NoEventLoopError
 from .validation import event_name_validator
 from .validation import validate_arguments
+
+
+class PlaceHolder:
+    def __init__(self, emitter):
+        self.parent: EventEmitter
+        self.children = {emitter}
+
+    def add_child(self, emitter):
+        self.children.add(emitter)
 
 
 class Manager:
     def __init__(self, root_node: EventEmitter):
         self.root = root_node
-        self.emitter_dict: dict[str, EventEmitter] = {}
+        self.emitter_dict: dict[str, EventEmitter | PlaceHolder] = {}
 
     def get_emitter(self, name: str) -> EventEmitter:
         if not isinstance(name, str):
             raise TypeError("An emitter name must be a string")
-        try:
-            return self.emitter_dict[name]
-        except KeyError:
+        if name in self.emitter_dict:
+            emitter = self.emitter_dict[name]
+            if isinstance(emitter, PlaceHolder):
+                place_holder, emitter = emitter, EventEmitter(name)
+                self.emitter_dict[name] = emitter
+                self._fixup_children(place_holder, emitter)
+                self._fixup_parents(emitter)
+        else:
             emitter = EventEmitter(name)
             self.emitter_dict[name] = emitter
-            return emitter
+            self._fixup_parents(emitter)
+        return emitter
+
+    def _fixup_children(self, place_holder: PlaceHolder, emitter: EventEmitter) -> None:
+        name = emitter.name
+        for child in place_holder.children:
+            child_already_has_parent_thats_child_of_emitter = (
+                child._parent.name.startswith(name)
+            )
+            if not child_already_has_parent_thats_child_of_emitter:
+                child._parent = emitter
+
+    def _fixup_parents(self, emitter: EventEmitter) -> None:
+        name = emitter.name
+        idx = name.rfind(".")
+        real_parent = None
+        while (idx > 0) and real_parent is None:
+            parent_name = name[:idx]
+            if parent_name not in self.emitter_dict:
+                self.emitter_dict[parent_name] = PlaceHolder(emitter)
+            else:
+                potential_parent = self.emitter_dict[parent_name]
+                if isinstance(potential_parent, EventEmitter):
+                    real_parent = potential_parent
+                else:
+                    assert isinstance(potential_parent, PlaceHolder)
+                    potential_parent.add_child(emitter)
+            idx = parent_name.rfind(".")
+        if real_parent is None:
+            real_parent = self.root
+        emitter._parent = real_parent
 
 
 class EventEmitter:
@@ -45,7 +90,9 @@ class EventEmitter:
     def __init__(self, name: str):
         self.name = name
         self._listeners: defaultdict[str, list] = defaultdict(list)
-        self._loop: Optional[AbstractEventLoop] = None
+
+        self._loop: AbstractEventLoop | None = None
+        self._parent: EventEmitter | None = None
 
     @validate_arguments(event_name_validator)
     def listener_count(self, event_name: str, /) -> int:
@@ -119,17 +166,30 @@ class EventEmitter:
             except NameError:
                 pass
 
+    def _get_loop(self):
+        ee = self
+        while (loop := ee._loop) is None:
+            ee = ee._parent
+            if ee is None:
+                raise NoEventLoopError(
+                    "No event loop configured.\n    Hint: use "
+                    "`eventing.set_event_loop(asyncio.get_running_loop())` "
+                    "at top of your asyncio entrypoint."
+                )
+        return loop
+
     def _emit(self, listener, args, kwargs):
         if asyncio.iscoroutinefunction(listener):
+            loop = self._get_loop()
             try:
-                loop = asyncio.get_running_loop()
+                running_loop = asyncio.get_running_loop()
             except RuntimeError:
-                loop = None
+                running_loop = None
             coro = listener(*args, **kwargs)
-            if loop is None or loop != self._loop:
-                asyncio.run_coroutine_threadsafe(coro, self._loop)
+            if running_loop is None or running_loop != loop:
+                asyncio.run_coroutine_threadsafe(coro, loop)
             else:
-                self._loop.create_task(coro)
+                loop.create_task(coro)
         else:
             listener(*args, **kwargs)
 
@@ -144,7 +204,7 @@ class EventEmitter:
     def _on(self, event_name: str, /, listener):
         self._listeners[event_name].append(listener)
 
-    def set_event_loop(self, loop: AbstractEventLoop):
+    def set_event_loop(self, loop: AbstractEventLoop) -> None:
         self._loop = loop
 
     def __repr__(self) -> str:
@@ -166,3 +226,7 @@ def get_emitter(name: str = "") -> EventEmitter:
         return root
     else:
         return EventEmitter.manager.get_emitter(name)
+
+
+def set_event_loop(loop: AbstractEventLoop) -> None:
+    root.set_event_loop(loop)

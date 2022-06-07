@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning][semver].
 [semver]: https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
+### Added
+- Module level `eventing.set_event_loop(...)` setting the event loop on root,
+  top of the hierarchy, making any emitter capable of handling coroutine
+  function listeners.
+
+### Changed
+- `ee.emit(...)` will now look for an event loop up the hierarchy on emit when
+  a coroutine listener is encountered. If `a.b.c` emits an event with coroutine
+  function listener it will first check if itself has a loop, then `a.b`, `a`
+  and finally the root event emitter. If one isn't found it raises
+  `NoEventLoopError`.
 
 ## [0.2.0] - 2022-06-03
 ### Added

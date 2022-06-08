@@ -14,10 +14,20 @@ from collections import defaultdict
 from collections import deque
 import contextlib
 from contextvars import ContextVar
-from typing import Iterator
+from contextvars import Token
+import dis
+import functools
+from functools import wraps
+import inspect
+import itertools
+import operator
+from types import FrameType
+from typing import Iterator, Literal, NamedTuple, TypeVar
 import warnings
 
+from .exceptions import MissingClassMethodHandler
 from .exceptions import NoEventLoopError
+from .exceptions import NotAClassError
 from .validation import event_name_validator
 from .validation import validate_arguments
 
@@ -82,10 +92,22 @@ class Manager:
         emitter._parent = real_parent
 
 
+T = TypeVar("T")
+MethodType = Literal["instance", "class", "static"]
+
+
+class ClassListener(NamedTuple):
+    emitter_name: str
+    event_name: str
+    method_name: str
+    method_type: MethodType
+
+
 class EventEmitter:
     manager: Manager
     root: RootEmitter
     _deferred_emits_var: ContextVar[deque] = ContextVar("deferred_emits")
+    _class_listeners: ContextVar[deque] = ContextVar("class_listeners")
 
     def __init__(self, name: str):
         self.name = name
@@ -135,6 +157,7 @@ class EventEmitter:
     def _defer_emits(self, event_name, args, kwargs) -> Iterator:
         try:
             deferred_emits = self._deferred_emits_var.get()
+            token = None
         except LookupError:
             # Initial call to emit, setup to catch and handle eventual
             # recursive calls
@@ -161,10 +184,8 @@ class EventEmitter:
         try:
             yield defer_iterator
         finally:
-            try:
+            if token is not None:
                 self._deferred_emits_var.reset(token)
-            except NameError:
-                pass
 
     def _get_loop(self):
         ee = self
@@ -193,10 +214,142 @@ class EventEmitter:
         else:
             listener(*args, **kwargs)
 
+    def _check_if_class_has_decorator(
+        self,
+        class_creation_frame: FrameType,
+        class_decorator_instructions: deque[dis.Instruction],
+        decorator_func,
+    ) -> None:
+        tos = None
+        f_locals = class_creation_frame.f_locals
+        f_globals = class_creation_frame.f_globals
+        for instr in class_decorator_instructions:
+            obj = None
+            # TODO: this is not exhaustive
+            if instr.opname in ["LOAD_NAME", "LOAD_DEREF", "LOAD_GLOBAL"]:
+                try:
+                    obj = f_locals[instr.argval]
+                except KeyError:
+                    obj = f_globals[instr.argval]
+            elif instr.opname == "LOAD_ATTR":
+                obj = getattr(tos, instr.argval)
+
+            if obj is not None:
+                if obj == decorator_func:
+                    break
+                tos = obj
+
+        else:
+            raise MissingClassMethodHandler(
+                "`method=True` but class not decorated with `@ee.handle_methods`"
+            )
+
+    def _check_if_method_and_class_has_decorator(
+        self, decorator_frame: FrameType, decorator_func
+    ) -> None:
+        class_frame = decorator_frame.f_back
+        if class_frame is None:
+            raise NotAClassError
+
+        class_creation_frame = class_frame.f_back
+        if class_creation_frame is None:
+            # Then we can't possibly be in a class because the stack isn't deep enough
+            raise NotAClassError
+        class_code = class_frame.f_code
+
+        op = functools.partial(operator.is_not, class_code)
+        # Get all previously run instructions up to where the class code was executed
+        instructions = deque(
+            itertools.takewhile(op, dis.get_instructions(class_creation_frame.f_code))
+        )
+
+        class_decorator_instructions: deque[dis.Instruction] = deque()
+        part_of_class = False
+        try:
+            # iterate backwards
+            while instr := instructions.pop():
+                if not part_of_class:
+                    if instr.opname == "LOAD_BUILD_CLASS":
+                        part_of_class = True
+                else:
+                    if instr.opname.startswith("STORE_"):
+                        break
+                    else:
+                        # put the back in normal order
+                        class_decorator_instructions.appendleft(instr)
+        except IndexError:
+            if not part_of_class:
+                raise NotAClassError from None
+
+        self._check_if_class_has_decorator(
+            class_creation_frame, class_decorator_instructions, decorator_func
+        )
+
+    def _find_method_info(self, decorator_frame: FrameType) -> tuple[str, MethodType]:
+        class_frame = decorator_frame.f_back
+        if class_frame is None:
+            raise RuntimeError("No frame to find method info for")
+        current_instruction_offset = class_frame.f_lasti
+
+        instructions: deque[dis.Instruction] = deque()
+        method_name: str
+        for instr in dis.get_instructions(class_frame.f_code):
+            if instr.offset < current_instruction_offset:
+                instructions.append(instr)
+            elif instr.opname == "STORE_NAME":
+                method_name = instr.argval
+                break
+        else:
+            raise RuntimeError("Failed to find method name")
+
+        method_type: MethodType = "instance"
+        method_type_map: dict[str, MethodType] = {
+            "classmethod": "class",
+            "staticmethod": "static",
+        }
+        try:
+            # iterate backwards
+            while instr := instructions.pop():
+                if instr.opname == "LOAD_NAME" and instr.argval in method_type_map:
+                    # TODO: maybe check the reference instead of just looking at name
+                    method_type = method_type_map[instr.argval]
+                elif instr.opname.startswith("STORE_"):
+                    break
+        except IndexError:
+            pass
+
+        return method_name, method_type
+
     @validate_arguments(event_name_validator)
-    def on(self, event_name: str, /):
+    def on(self, event_name: str, /, *, method: bool = False):
         def inner(listener):
-            self._on(event_name, listener)
+            if not method:
+                self._on(event_name, listener)
+            else:
+                frame = inspect.currentframe()
+                try:
+                    self._check_if_method_and_class_has_decorator(
+                        frame, self.handle_methods
+                    )
+                    method_name, method_type = self._find_method_info(frame)
+
+                    try:
+                        class_listeners = self._class_listeners.get()
+                    except LookupError:
+                        class_listeners = deque()
+                        token = self._class_listeners.set(class_listeners)
+                        class_listeners.append(token)
+
+                    class_listeners.append(
+                        ClassListener(self.name, event_name, method_name, method_type)
+                    )
+                except NotAClassError:
+                    raise ValueError(
+                        "`method=True` may only be used on methods of a class"
+                    ) from None
+                finally:
+                    del frame
+
             return listener
 
         return inner
@@ -209,6 +362,72 @@ class EventEmitter:
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.name}>"
+
+    @classmethod
+    def handle_methods(cls, aclass: type[T]) -> type[T]:
+        try:
+            class_listeners = cls._class_listeners.get()
+        except LookupError:
+            warnings.warn(
+                "@ee.handle_methods wrapped class without any listeners to setup.\n"
+                "    Hint: did you forget `@ee.on(..., method=True)`"
+            )
+            return aclass
+        else:
+            token = class_listeners.popleft()
+            assert isinstance(token, Token)
+            assert all(isinstance(x, ClassListener) for x in class_listeners)
+            cls._class_listeners.reset(token)
+
+        instance_listeners: list[tuple[str, str, str]] = []
+        for emitter_name, event_name, method_name, method_type in class_listeners:
+            # Instance methods need to be delayed until instantiation.
+            if method_type == "instance":
+                instance_listeners.append((emitter_name, event_name, method_name))
+                continue
+
+            if method_type not in ["class", "static"]:
+                raise ValueError(
+                    "method type must be one of: "
+                    f"'instance'|'class'|'static'; got {method_type}"
+                )
+
+            # What we get now will be bound, if necessary, since the class
+            # has been fully constructed.
+            listener = getattr(aclass, method_name)
+            # maybe cache
+            ee = get_emitter(emitter_name)
+            ee._listeners[event_name].append(listener)
+
+        if instance_listeners:
+            setattr(
+                aclass,
+                "__init__",
+                cls._add_instance_listeners(aclass, tuple(instance_listeners)),
+            )
+
+        return aclass
+
+    @classmethod
+    def _add_instance_listeners(cls, class_to_wrap, instance_listeners):
+        try:
+            __init__ = vars(class_to_wrap)["__init__"]
+        except KeyError:
+
+            def __dummy_init__(self, *args, **kwargs):
+                super(class_to_wrap.__mro__[0], self).__init__(*args, **kwargs)
+
+            __init__ = __dummy_init__
+
+        @wraps(__init__)
+        def wrapper(self, *args, **kwargs):
+            __init__(self, *args, **kwargs)
+            for emitter_name, event_name, method_name in instance_listeners:
+                instance_listener = getattr(self, method_name)
+                ee = get_emitter(emitter_name)
+                ee._listeners[event_name].append(instance_listener)
+
+        return wrapper
 
 
 class RootEmitter(EventEmitter):

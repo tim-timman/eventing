@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning][semver].
 - Module level `eventing.set_event_loop(...)` setting the event loop on root,
   top of the hierarchy, making any emitter capable of handling coroutine
   function listeners.
+- Support to add listeners to static, class, and instance methods and have them
+  be called bound. This is opt-in by marking them with `@ee.on(..., method=True)`
+  and decorating the class with `@ee.handle_methods` to complete setup. Instance
+  methods are added first when instantiated. Note: this is a hacky
+  implementation.
 
 ### Changed
 - `ee.emit(...)` will now look for an event loop up the hierarchy on emit when

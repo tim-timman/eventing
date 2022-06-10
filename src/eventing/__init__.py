@@ -258,11 +258,11 @@ class EventEmitter:
         self, decorator_frame: FrameType, decorator_func
     ) -> None:
         class_frame = decorator_frame.f_back
-        if class_frame is None:
+        if class_frame is None:  # pragma: no cover
             raise NotAClassError
 
         class_creation_frame = class_frame.f_back
-        if class_creation_frame is None:
+        if class_creation_frame is None:  # pragma: no cover
             # Then we can't possibly be in a class because the stack isn't deep enough
             raise NotAClassError
         class_code = class_frame.f_code
@@ -277,7 +277,7 @@ class EventEmitter:
         part_of_class = False
         try:
             # iterate backwards
-            while instr := instructions.pop():
+            while instr := instructions.pop():  # pragma: no branch
                 if not part_of_class:
                     if instr.opname == "LOAD_BUILD_CLASS":
                         part_of_class = True
@@ -298,7 +298,7 @@ class EventEmitter:
     @staticmethod
     def _get_class_attr_for_listener(decorator_frame: FrameType) -> str:
         class_frame = decorator_frame.f_back
-        if class_frame is None:
+        if class_frame is None:  # pragma: no cover
             raise RuntimeError("Failed to find class attr for listener")
 
         for instr in dis.get_instructions(class_frame.f_code):
@@ -306,7 +306,7 @@ class EventEmitter:
                 continue
             elif instr.opname == "STORE_NAME":
                 return instr.argval
-        else:
+        else:  # pragma: no cover
             raise RuntimeError("Failed to find class attr for listener")
 
     def handle_methods(self, cls: type[T]) -> type[T]:

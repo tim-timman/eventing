@@ -1,3 +1,5 @@
+from unittest.mock import call
+
 import pytest
 
 import eventing
@@ -98,3 +100,29 @@ def test_should_error_if_method_listener_without_class(ee):
         @ee.on("foo", method=True)
         def listener():
             pass
+
+
+def test_function_reuse_through_descriptor_methods_correctly_added_and_called(ee):
+    mock_calls = []
+
+    def mock(*args):
+        mock_calls.append(call(*args))
+
+    foo_deco = ee.on("foo", method=True)
+
+    @ee.handle_methods
+    class Foo:
+        non_deco_method = mock
+        instance_method = foo_deco(mock)
+        class_method = classmethod(foo_deco(mock))
+        static_method = staticmethod(foo_deco(mock))
+
+    assert ee.listeners("foo") == [Foo.class_method, Foo.static_method]
+    instance = Foo()
+    assert ee.listeners("foo") == [
+        Foo.class_method,
+        Foo.static_method,
+        instance.instance_method,
+    ]
+    ee.emit("foo")
+    assert mock_calls == [call(Foo), call(), call(instance)]

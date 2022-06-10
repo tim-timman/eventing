@@ -92,54 +92,6 @@ class Manager:
 
 
 T = TypeVar("T")
-CLASS_DUNDER = "__eventing_class_magic__"
-
-
-def handle_methods(cls: type[T]) -> type[T]:
-    members = [
-        (name, func)
-        for name, func in vars(cls).items()
-        if not name.startswith("__") and inspect.isroutine(func)
-    ]
-
-    handled_listeners = False
-    instance_listeners = []
-    listener_metadata: deque[tuple[str, str]]
-    for listener_name, func in members:
-        if isinstance(func, (staticmethod, classmethod)) and hasattr(
-            func.__func__, CLASS_DUNDER
-        ):
-            listener_metadata = getattr(func.__func__, CLASS_DUNDER)
-            listener = getattr(cls, listener_name)
-            emitter_name, event_name = listener_metadata.popleft()
-            # @Performance
-            get_emitter(emitter_name).add_listener(event_name, listener)
-            if not listener_metadata:
-                delattr(func.__func__, CLASS_DUNDER)
-            handled_listeners = True
-
-        elif hasattr(func, CLASS_DUNDER):
-            listener_metadata = getattr(func, CLASS_DUNDER)
-            emitter_name, event_name = listener_metadata.popleft()
-            instance_listeners.append((emitter_name, event_name, listener_name))
-            if not listener_metadata:
-                delattr(func, CLASS_DUNDER)
-            handled_listeners = True
-
-    if instance_listeners:
-        setattr(
-            cls,
-            "__init__",
-            _add_instance_listeners(cls, instance_listeners),
-        )
-
-    if not handled_listeners:
-        warnings.warn(
-            "@ee.handle_methods wrapped class without any listeners to setup.\n"
-            "    Hint: did you forget `@ee.on(..., method=True)`"
-        )
-
-    return cls
 
 
 def __dummy_init__(self, *args, **kwargs) -> None:
@@ -164,8 +116,8 @@ def _add_instance_listeners(
 class EventEmitter:
     manager: Manager
     root: RootEmitter
-    handle_methods = staticmethod(handle_methods)
     _deferred_emits_var: ContextVar[deque] = ContextVar("deferred_emits")
+    _class_listeners_var: ContextVar[deque] = ContextVar("class_listeners")
 
     def __init__(self, name: str):
         self.name = name
@@ -284,7 +236,7 @@ class EventEmitter:
         for instr in class_decorator_instructions:
             obj = None
             # TODO: this is not exhaustive
-            if instr.opname in ["LOAD_NAME", "LOAD_DEREF", "LOAD_GLOBAL"]:
+            if instr.opname in ["LOAD_NAME", "LOAD_DEREF", "LOAD_GLOBAL", "LOAD_FAST"]:
                 try:
                     obj = f_locals[instr.argval]
                 except KeyError:
@@ -343,6 +295,54 @@ class EventEmitter:
             class_creation_frame, class_decorator_instructions, decorator_func
         )
 
+    @staticmethod
+    def _get_class_attr_for_listener(decorator_frame: FrameType) -> str:
+        class_frame = decorator_frame.f_back
+        if class_frame is None:
+            raise RuntimeError("Failed to find class attr for listener")
+
+        for instr in dis.get_instructions(class_frame.f_code):
+            if instr.offset <= class_frame.f_lasti:
+                continue
+            elif instr.opname == "STORE_NAME":
+                return instr.argval
+        else:
+            raise RuntimeError("Failed to find class attr for listener")
+
+    def handle_methods(self, cls: type[T]) -> type[T]:
+        try:
+            class_listeners = self._class_listeners_var.get()
+        except LookupError:
+            warnings.warn(
+                "@ee.handle_methods wrapped class without any listeners to setup.\n"
+                "    Hint: did you forget `@ee.on(..., method=True)`"
+            )
+            return cls
+        else:
+            token = class_listeners.popleft()
+            self._class_listeners_var.reset(token)
+
+        instance_listeners = []
+
+        cls_vars = vars(cls)
+        for emitter_name, event_name, listener_name in class_listeners:
+            func = cls_vars[listener_name]
+            if isinstance(func, (staticmethod, classmethod)):
+                listener = getattr(cls, listener_name)
+                # @Performance
+                get_emitter(emitter_name).add_listener(event_name, listener)
+            else:
+                instance_listeners.append((emitter_name, event_name, listener_name))
+
+        if instance_listeners:
+            setattr(
+                cls,
+                "__init__",
+                _add_instance_listeners(cls, instance_listeners),
+            )
+
+        return cls
+
     @validate_arguments(event_name_validator)
     def on(self, event_name: str, /, *, method: bool = False):
         def inner(listener):
@@ -354,12 +354,15 @@ class EventEmitter:
                     self._check_if_method_and_class_has_decorator(
                         frame, self.handle_methods
                     )
-                    if hasattr(listener, CLASS_DUNDER):
-                        getattr(listener, CLASS_DUNDER).append((self.name, event_name))
-                    else:
-                        setattr(
-                            listener, CLASS_DUNDER, deque(((self.name, event_name),))
-                        )
+                    listener_name = self._get_class_attr_for_listener(frame)
+                    try:
+                        class_listeners = self._class_listeners_var.get()
+                    except LookupError:
+                        class_listeners = deque()
+                        token = self._class_listeners_var.set(class_listeners)
+                        class_listeners.append(token)
+
+                    class_listeners.append((self.name, event_name, listener_name))
                 except NotAClassError:
                     raise ValueError(
                         "`method=True` may only be used on methods of a class"

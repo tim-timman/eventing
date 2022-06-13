@@ -13,6 +13,7 @@ from asyncio import AbstractEventLoop
 from collections import defaultdict
 from collections import deque
 from contextvars import ContextVar
+from contextvars import Token
 import dis
 import functools
 from functools import wraps
@@ -20,7 +21,7 @@ import inspect
 import itertools
 import operator
 from types import FrameType
-from typing import Any, Generator, Sequence, TypeVar
+from typing import Any, cast, Generator, Sequence, TypeVar
 import warnings
 
 from .exceptions import MissingClassMethodHandler
@@ -112,11 +113,17 @@ def _add_instance_listeners(
     return wrapper
 
 
+DeferredEmitItem = tuple[str, tuple, dict[str, Any]]
+DeferredEmits = deque[DeferredEmitItem]
+ClassListenerItem = tuple[str, str, str]
+ClassListeners = deque[ClassListenerItem]
+
+
 class EventEmitter:
     manager: Manager
     root: RootEmitter
-    _deferred_emits_var: ContextVar[deque] = ContextVar("deferred_emits")
-    _class_listeners_var: ContextVar[deque] = ContextVar("class_listeners")
+    _deferred_emits_var: ContextVar[DeferredEmits] = ContextVar("deferred_emits")
+    _class_listeners_var: ContextVar[ClassListeners] = ContextVar("class_listeners")
 
     def __init__(self, name: str):
         self.name = name
@@ -165,7 +172,7 @@ class EventEmitter:
     def _defer_emits(
         self, event_name: str, args: tuple, kwargs: dict[str, Any]
     ) -> Generator[tuple[str, tuple, dict[str, Any]], None, None]:
-        deferred_emits: deque[tuple[str, tuple, dict[str, Any]]]
+        deferred_emits: deque[DeferredEmitItem]
         try:
             deferred_emits = self._deferred_emits_var.get()
         except LookupError:
@@ -308,7 +315,9 @@ class EventEmitter:
             )
             return cls
         else:
-            token = class_listeners.popleft()
+            # Hack: token is passed along by the first method decorator as the
+            # first in the deque
+            token = cast(Token[ClassListeners], class_listeners.popleft())
             self._class_listeners_var.reset(token)
 
         instance_listeners = []
@@ -349,6 +358,8 @@ class EventEmitter:
                     except LookupError:
                         class_listeners = deque()
                         token = self._class_listeners_var.set(class_listeners)
+                        # Hack: pass the token along for handle_methods to use
+                        # to reset the contextvar as the first in the deque
                         class_listeners.append(token)
 
                     class_listeners.append((self.name, event_name, listener_name))

@@ -12,7 +12,6 @@ import asyncio
 from asyncio import AbstractEventLoop
 from collections import defaultdict
 from collections import deque
-import contextlib
 from contextvars import ContextVar
 import dis
 import functools
@@ -21,7 +20,7 @@ import inspect
 import itertools
 import operator
 from types import FrameType
-from typing import Iterator, Sequence, TypeVar
+from typing import Any, Generator, Sequence, TypeVar
 import warnings
 
 from .exceptions import MissingClassMethodHandler
@@ -154,48 +153,38 @@ class EventEmitter:
         # overwrite `listeners`
         return_value = bool(listeners)
 
-        with self._defer_emits(event_name, args, kwargs) as deferred_emits:
-            for event_name, args, kwargs in deferred_emits:
-                for listener in listeners:
-                    self._emit(listener, args, kwargs)
-                listeners = self._listeners[event_name].copy()
+        deferred_emits = self._defer_emits(event_name, args, kwargs)
+        for event_name, args, kwargs in deferred_emits:
+            for listener in listeners:
+                self._emit(listener, args, kwargs)
+            listeners = self._listeners[event_name].copy()
 
         # TODO: Check to see if this is actually valid since we defer
         return return_value
 
-    @contextlib.contextmanager
-    def _defer_emits(self, event_name, args, kwargs) -> Iterator:
+    def _defer_emits(
+        self, event_name: str, args: tuple, kwargs: dict[str, Any]
+    ) -> Generator[tuple[str, tuple, dict[str, Any]], None, None]:
+        deferred_emits: deque[tuple[str, tuple, dict[str, Any]]]
         try:
             deferred_emits = self._deferred_emits_var.get()
-            token = None
         except LookupError:
             # Initial call to emit, setup to catch and handle eventual
             # recursive calls
             deferred_emits = deque(((event_name, args, kwargs),))
             token = self._deferred_emits_var.set(deferred_emits)
-
-            def defer_generator():
-                try:
-                    while True:
-                        yield deferred_emits.popleft()
-                except IndexError:
-                    return
-
-            # Give this initial caller an iterator that will return the first
-            # call and all potential deferred emits to come
-            defer_iterator = defer_generator()
         else:
             # We've been recursively called as a result by a listener
             deferred_emits.append((event_name, args, kwargs))
-            # Return an empty iterator since we've deferred our emit
-            # to be handled by the owner
-            defer_iterator = iter(())
+            return None
 
         try:
-            yield defer_iterator
+            while True:
+                yield deferred_emits.popleft()
+        except IndexError:
+            pass
         finally:
-            if token is not None:
-                self._deferred_emits_var.reset(token)
+            self._deferred_emits_var.reset(token)
 
     def _get_loop(self):
         ee = self

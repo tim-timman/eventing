@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import call
 
 import pytest
@@ -126,3 +127,55 @@ def test_function_reuse_through_descriptor_methods_correctly_added_and_called(ee
     ]
     ee.emit("foo")
     assert mock_calls == [call(Foo), call(), call(instance)]
+
+
+@pytest.mark.asyncio
+async def test_async_class_method_variants_correctly_added_and_called(ee, event_loop):
+    ee.set_event_loop(event_loop)
+
+    async_mock_calls = []
+
+    async def async_mock(*args):
+        async_mock_calls.append(call(*args, "mock"))
+
+    async def bad(*args):
+        raise AssertionError("Not supposed to be called")
+
+    foo_deco = ee.on("foo", method=True)
+
+    @ee.handle_methods
+    class Foo:
+        non_deco_dec_method = bad
+        instance_desc_method = foo_deco(async_mock)
+        class_desc_method = classmethod(foo_deco(async_mock))
+        static_desc_method = staticmethod(foo_deco(async_mock))
+
+        async def non_deco_method(self):
+            raise AssertionError("Not supposed to be called")
+
+        @ee.on("foo", method=True)
+        async def instance_method(self):
+            async_mock_calls.append(call(self))
+
+        @classmethod
+        @ee.on("foo", method=True)
+        async def class_method(cls):
+            async_mock_calls.append(call(cls))
+
+        @staticmethod
+        @ee.on("foo", method=True)
+        async def static_method():
+            async_mock_calls.append(call())
+
+    instance = Foo()
+    ee.emit("foo")
+    # Just to allow other queued coroutines to run
+    await asyncio.sleep(0)
+    assert async_mock_calls == [
+        call(Foo, "mock"),
+        call("mock"),
+        call(Foo),
+        call(),
+        call(instance, "mock"),
+        call(instance),
+    ]

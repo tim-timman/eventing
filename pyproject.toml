@@ -13,8 +13,9 @@ description = """\
     """
 readme = "README.md"
 license = {file = "LICENSE"}
+# Full list of classifiers: https://pypi.org/classifiers/
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",

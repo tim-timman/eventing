@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning][semver].
   and finally the root event emitter. If one isn't found it raises
   `NoEventLoopError`.
 
+### Fixed
+- Mutations of returned list of `ee.listeners(...)` would mutate the emitter's
+  listeners. It now returns a copy.
+
 ## [0.2.0] - 2022-06-03
 ### Added
 - Support coroutine functions (`async def`) as listeners. Threadsafe. The event

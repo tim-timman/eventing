@@ -145,7 +145,7 @@ class EventEmitter:
     @validate_arguments(event_name_validator)
     def listeners(self, event_name: str, /) -> list[EventEmitter]:
         with self._lock:
-            return self._listeners[event_name]
+            return self._listeners[event_name].copy()
 
     @validate_arguments(event_name_validator)
     def add_listener(self, event_name: str, /, listener) -> EventEmitter:

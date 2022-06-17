@@ -67,3 +67,12 @@ def test_add_listener_returns_the_emitter(ee):
 
 def test_removing_listener_returns_the_emitter(ee):
     assert ee.remove_listener("foo", a_listener) is ee
+
+
+def test_mutation_of_returned_listeners_must_not_mutate_actual_listeners(ee):
+    ee.add_listener("foo", a_listener)
+    assert ee.listeners("foo") == [a_listener]
+    listeners = ee.listeners("foo")
+    listeners.clear()
+    assert listeners == []
+    assert ee.listeners("foo") == [a_listener]

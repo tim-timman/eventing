@@ -179,3 +179,44 @@ async def test_async_class_method_variants_correctly_added_and_called(ee, event_
         call(instance, "mock"),
         call(instance),
     ]
+
+
+def test_overwritten_methods_should_not_be_added_as_listeners(ee):
+    mock_calls = []
+
+    @ee.handle_methods
+    class Foo:
+        @staticmethod
+        @ee.on("foo", method=True)
+        def listener():
+            mock_calls.append("decorated called")
+
+        @staticmethod
+        def listener():  # noqa: F811
+            mock_calls.append("non-decorated called")
+
+    ee.emit("foo")
+    assert mock_calls == []
+
+
+def test_decorating_function_twice_adds_listener_twice(ee):
+    @ee.on("foo")
+    @ee.on("foo")
+    def listener():
+        pass
+
+    assert ee.listeners("foo") == [listener, listener]
+
+
+def test_decorating_method_multiple_times_adds_multiple_times(ee):
+    @ee.handle_methods
+    class Foo:
+        @staticmethod
+        @ee.on("foo", method=True)
+        @ee.on("bar", method=True)
+        @ee.on("foo", method=True)
+        def listener():
+            pass
+
+    assert ee.listeners("foo") == [Foo.listener, Foo.listener]
+    assert ee.listeners("bar") == [Foo.listener]

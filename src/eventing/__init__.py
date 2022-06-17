@@ -13,7 +13,6 @@ from asyncio import AbstractEventLoop
 from collections import defaultdict
 from collections import deque
 from contextvars import ContextVar
-from contextvars import Token
 import dis
 import functools
 from functools import wraps
@@ -22,7 +21,7 @@ import itertools
 import operator
 import threading
 from types import FrameType
-from typing import Any, cast, Generator, Sequence, TypeVar
+from typing import Any, Callable, Generator, Sequence, TypeVar
 import warnings
 
 from .exceptions import MissingClassMethodHandler
@@ -117,17 +116,54 @@ def _add_instance_listeners(
     return wrapper
 
 
+ListenerT = Callable[..., Any]
+
+
+def wrapped_with_method_defer(
+    emitter_name: str, event_name: str, listener: ListenerT
+) -> ListenerT:
+    # See if we've previously decorated it, in which case,
+    # just append our new addition
+    try:
+        func = inspect.unwrap(listener, stop=is_eventing_defer_method)
+    except ValueError:  # pragma: no cover
+        previously_wrapped = False
+    else:
+        previously_wrapped = is_eventing_defer_method(func)
+
+    if previously_wrapped:
+        getattr(func, EVENTING_DEFER_METHOD_ATTR).append((emitter_name, event_name))
+        return func
+    else:
+        if asyncio.iscoroutinefunction(listener):
+
+            async def wrapper(*args, **kwargs):
+                return await listener(*args, **kwargs)
+
+        else:
+
+            def wrapper(*args, **kwargs):
+                return listener(*args, **kwargs)
+
+        functools.update_wrapper(wrapper, listener)
+        setattr(wrapper, EVENTING_DEFER_METHOD_ATTR, [(emitter_name, event_name)])
+        return wrapper
+
+
 DeferredEmitItem = tuple[str, tuple, dict[str, Any]]
 DeferredEmits = deque[DeferredEmitItem]
-ClassListenerItem = tuple[str, str, str]
-ClassListeners = deque[ClassListenerItem]
+
+EVENTING_DEFER_METHOD_ATTR = "__eventing_defer_method__"
+
+
+def is_eventing_defer_method(func):
+    return hasattr(func, EVENTING_DEFER_METHOD_ATTR)
 
 
 class EventEmitter:
     manager: Manager
     root: RootEmitter
     _deferred_emits_var: ContextVar[DeferredEmits] = ContextVar("deferred_emits")
-    _class_listeners_var: ContextVar[ClassListeners] = ContextVar("class_listeners")
 
     def __init__(self, name: str):
         self.name = name
@@ -298,52 +334,43 @@ class EventEmitter:
             class_creation_frame, class_decorator_instructions, decorator_func
         )
 
-    @staticmethod
-    def _get_class_attr_for_listener(decorator_frame: FrameType) -> str:
-        class_frame = decorator_frame.f_back
-        if class_frame is None:  # pragma: no cover
-            raise RuntimeError("Failed to find class attr for listener")
-
-        for instr in dis.get_instructions(class_frame.f_code):
-            if instr.offset <= class_frame.f_lasti:
-                continue
-            elif instr.opname == "STORE_NAME":
-                return instr.argval
-        else:  # pragma: no cover
-            raise RuntimeError("Failed to find class attr for listener")
-
     def handle_methods(self, cls: type[T]) -> type[T]:
-        try:
-            class_listeners = self._class_listeners_var.get()
-        except LookupError:
-            warnings.warn(
-                "@ee.handle_methods wrapped class without any listeners to setup.\n"
-                "    Hint: did you forget `@ee.on(..., method=True)`"
-            )
-            return cls
-        else:
-            # Hack: token is passed along by the first method decorator as the
-            # first in the deque
-            token = cast(Token[ClassListeners], class_listeners.popleft())
-            self._class_listeners_var.reset(token)
-
         instance_listeners = []
-
-        cls_vars = vars(cls)
-        for emitter_name, event_name, listener_name in class_listeners:
-            func = cls_vars[listener_name]
-            if isinstance(func, (staticmethod, classmethod)):
-                listener = getattr(cls, listener_name)
-                # @Performance
-                get_emitter(emitter_name).add_listener(event_name, listener)
+        found_listeners = False
+        for listener_name, func in vars(cls).items():
+            if not inspect.isroutine(func):
+                continue
+            try:
+                obj = inspect.unwrap(func, stop=is_eventing_defer_method)
+            except ValueError:  # pragma: no cover
+                continue
             else:
-                instance_listeners.append((emitter_name, event_name, listener_name))
+                if not is_eventing_defer_method(obj):
+                    continue
+
+            listener_descriptions = getattr(obj, EVENTING_DEFER_METHOD_ATTR)
+            assert listener_descriptions
+            for emitter_name, event_name in listener_descriptions:
+                if isinstance(func, (staticmethod, classmethod)):
+                    listener = getattr(cls, listener_name)
+                    # @Performance
+                    get_emitter(emitter_name).add_listener(event_name, listener)
+                else:
+                    instance_listeners.append((emitter_name, event_name, listener_name))
+
+            found_listeners = True
 
         if instance_listeners:
             setattr(
                 cls,
                 "__init__",
                 _add_instance_listeners(cls, instance_listeners),
+            )
+
+        if not found_listeners:
+            warnings.warn(
+                "@ee.handle_methods wrapped class without any listeners to setup.\n"
+                "    Hint: did you forget `@ee.on(..., method=True)`"
             )
 
         return cls
@@ -353,23 +380,13 @@ class EventEmitter:
         def inner(listener):
             if not method:
                 self._on(event_name, listener)
+                return listener
             else:
                 frame = inspect.currentframe()
                 try:
                     self._check_if_method_and_class_has_decorator(
                         frame, self.handle_methods
                     )
-                    listener_name = self._get_class_attr_for_listener(frame)
-                    try:
-                        class_listeners = self._class_listeners_var.get()
-                    except LookupError:
-                        class_listeners = deque()
-                        token = self._class_listeners_var.set(class_listeners)
-                        # Hack: pass the token along for handle_methods to use
-                        # to reset the contextvar as the first in the deque
-                        class_listeners.append(token)
-
-                    class_listeners.append((self.name, event_name, listener_name))
                 except NotAClassError:
                     raise ValueError(
                         "`method=True` may only be used on methods of a class"
@@ -377,7 +394,7 @@ class EventEmitter:
                 finally:
                     del frame
 
-            return listener
+            return wrapped_with_method_defer(self.name, event_name, listener)
 
         return inner
 

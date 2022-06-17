@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning][semver].
 [semver]: https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
+### Fixed
+- Overriding class method incorrectly added the overriding method as listener,
+  regardless of being decorated as one or not.
 
 ## [0.3.0] - 2022-06-17
 ### Added

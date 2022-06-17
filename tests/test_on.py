@@ -32,50 +32,47 @@ def test_instancemethod_decorated_with_on_isnt_added_until_instantiated(ee):
 
 
 def test_instancemethod_decorated_with_on_is_correctly_bound_when_called(ee):
-    called_arg = None
+    mock_calls = []
 
     @ee.handle_methods
     class Foo:
         @ee.on("foo", method=True)
         def listener(self):
-            nonlocal called_arg
-            called_arg = self
+            mock_calls.append(call(self))
 
     foo_instance = Foo()
     ee.emit("foo")
-    assert called_arg == foo_instance
+    assert mock_calls == [call(foo_instance)]
 
 
 def test_classmethod_decorated_with_on_is_correctly_bound_when_called(ee):
-    called_arg = None
+    mock_calls = []
 
     @ee.handle_methods
     class Foo:
         @classmethod
         @ee.on("foo", method=True)
         def listener(cls):
-            nonlocal called_arg
-            called_arg = cls
+            mock_calls.append(call(cls))
 
     assert ee.listeners("foo") == [Foo.listener]
     ee.emit("foo")
-    assert called_arg == Foo
+    assert mock_calls == [call(Foo)]
 
 
 def test_staticmethod_decorated_with_on_is_correctly_called(ee):
-    called = False
+    mock_calls = []
 
     @ee.handle_methods
     class Foo:
         @staticmethod
         @ee.on("foo", method=True)
         def listener():
-            nonlocal called
-            called = True
+            mock_calls.append(call())
 
     assert ee.listeners("foo") == [Foo.listener]
     ee.emit("foo")
-    assert called
+    assert mock_calls == [call()]
 
 
 def test_should_warn_if_class_is_wrapped_without_method_listeners(ee):
@@ -109,11 +106,14 @@ def test_function_reuse_through_descriptor_methods_correctly_added_and_called(ee
     def mock(*args):
         mock_calls.append(call(*args))
 
+    def bad(*args):
+        raise AssertionError("Not supposed to be called")
+
     foo_deco = ee.on("foo", method=True)
 
     @ee.handle_methods
     class Foo:
-        non_deco_method = mock
+        non_deco_method = bad
         instance_method = foo_deco(mock)
         class_method = classmethod(foo_deco(mock))
         static_method = staticmethod(foo_deco(mock))

@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning][semver].
 [semver]: https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
+
+## [0.3.0] - 2022-06-17
 ### Added
 - Module level `eventing.set_event_loop(...)` setting the event loop on root,
   top of the hierarchy, making any emitter capable of handling coroutine
@@ -61,6 +63,7 @@ and this project adheres to [Semantic Versioning][semver].
 - Read the Docs configuration
 - GitHub Actions configuration running tests on push and pull requests
 
-[Unreleased]: https://github.com/tim-timman/eventing/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/tim-timman/eventing/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/tim-timman/eventing/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/tim-timman/eventing/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/tim-timman/eventing/releases/tag/v0.1.0

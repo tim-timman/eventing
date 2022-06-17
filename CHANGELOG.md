@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning][semver].
   and decorating the class with `@ee.handle_methods` to complete setup. Instance
   methods are added first when instantiated. Note: this is a hacky
   implementation.
+- Getting emitters and adding/removing listeners should now be threadsafe.
 
 ### Changed
 - `ee.emit(...)` will now look for an event loop up the hierarchy on emit when

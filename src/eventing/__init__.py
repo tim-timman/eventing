@@ -20,6 +20,7 @@ from functools import wraps
 import inspect
 import itertools
 import operator
+import threading
 from types import FrameType
 from typing import Any, cast, Generator, Sequence, TypeVar
 import warnings
@@ -29,6 +30,8 @@ from .exceptions import NoEventLoopError
 from .exceptions import NotAClassError
 from .validation import event_name_validator
 from .validation import validate_arguments
+
+_module_lock = threading.RLock()
 
 
 class PlaceHolder:
@@ -48,17 +51,18 @@ class Manager:
     def get_emitter(self, name: str) -> EventEmitter:
         if not isinstance(name, str):
             raise TypeError("An emitter name must be a string")
-        if name in self.emitter_dict:
-            emitter = self.emitter_dict[name]
-            if isinstance(emitter, PlaceHolder):
-                place_holder, emitter = emitter, EventEmitter(name)
+        with _module_lock:
+            if name in self.emitter_dict:
+                emitter = self.emitter_dict[name]
+                if isinstance(emitter, PlaceHolder):
+                    place_holder, emitter = emitter, EventEmitter(name)
+                    self.emitter_dict[name] = emitter
+                    self._fixup_children(place_holder, emitter)
+                    self._fixup_parents(emitter)
+            else:
+                emitter = EventEmitter(name)
                 self.emitter_dict[name] = emitter
-                self._fixup_children(place_holder, emitter)
                 self._fixup_parents(emitter)
-        else:
-            emitter = EventEmitter(name)
-            self.emitter_dict[name] = emitter
-            self._fixup_parents(emitter)
         return emitter
 
     def _fixup_children(self, place_holder: PlaceHolder, emitter: EventEmitter) -> None:
@@ -131,14 +135,17 @@ class EventEmitter:
 
         self._loop: AbstractEventLoop | None = None
         self._parent: EventEmitter | None = None
+        self._lock = threading.Lock()
 
     @validate_arguments(event_name_validator)
     def listener_count(self, event_name: str, /) -> int:
-        return len(self._listeners[event_name])
+        with self._lock:
+            return len(self._listeners[event_name])
 
     @validate_arguments(event_name_validator)
     def listeners(self, event_name: str, /) -> list[EventEmitter]:
-        return self._listeners[event_name]
+        with self._lock:
+            return self._listeners[event_name]
 
     @validate_arguments(event_name_validator)
     def add_listener(self, event_name: str, /, listener) -> EventEmitter:
@@ -147,15 +154,13 @@ class EventEmitter:
 
     @validate_arguments(event_name_validator)
     def remove_listener(self, event_name: str, /, listener) -> EventEmitter:
-        try:
-            self._listeners[event_name].remove(listener)
-        except ValueError:
-            warnings.warn("Attempted to remove listener not present.")
+        self._off(event_name, listener)
         return self
 
     @validate_arguments(event_name_validator)
     def emit(self, event_name: str, /, *args, **kwargs) -> bool:
-        listeners = self._listeners[event_name].copy()
+        with self._lock:
+            listeners = self._listeners[event_name].copy()
         # We must store this first's call return value as we might
         # overwrite `listeners`
         return_value = bool(listeners)
@@ -164,7 +169,8 @@ class EventEmitter:
         for event_name, args, kwargs in deferred_emits:
             for listener in listeners:
                 self._emit(listener, args, kwargs)
-            listeners = self._listeners[event_name].copy()
+            with self._lock:
+                listeners = self._listeners[event_name].copy()
 
         # TODO: Check to see if this is actually valid since we defer
         return return_value
@@ -195,14 +201,15 @@ class EventEmitter:
 
     def _get_loop(self):
         ee = self
-        while (loop := ee._loop) is None:
-            ee = ee._parent
-            if ee is None:
-                raise NoEventLoopError(
-                    "No event loop configured.\n    Hint: use "
-                    "`eventing.set_event_loop(asyncio.get_running_loop())` "
-                    "at top of your asyncio entrypoint."
-                )
+        with _module_lock:
+            while (loop := ee._loop) is None:
+                ee = ee._parent
+                if ee is None:
+                    raise NoEventLoopError(
+                        "No event loop configured.\n    Hint: use "
+                        "`eventing.set_event_loop(asyncio.get_running_loop())` "
+                        "at top of your asyncio entrypoint."
+                    )
         return loop
 
     def _emit(self, listener, args, kwargs):
@@ -375,7 +382,15 @@ class EventEmitter:
         return inner
 
     def _on(self, event_name: str, /, listener):
-        self._listeners[event_name].append(listener)
+        with self._lock:
+            self._listeners[event_name].append(listener)
+
+    def _off(self, event_name: str, /, listener):
+        try:
+            with self._lock:
+                self._listeners[event_name].remove(listener)
+        except ValueError:
+            warnings.warn("Attempted to remove listener not present.")
 
     def set_event_loop(self, loop: AbstractEventLoop) -> None:
         self._loop = loop

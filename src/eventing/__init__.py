@@ -340,19 +340,20 @@ class EventEmitter:
         for listener_name, func in vars(cls).items():
             if not inspect.isroutine(func):
                 continue
+            # in 3.9 classmethod and staticmethod doesn't inherit method attributes
+            # and __wrapped__ is required for unwrap to work
+            listener = getattr(cls, listener_name)
             try:
-                obj = inspect.unwrap(func, stop=is_eventing_defer_method)
+                obj = inspect.unwrap(listener, stop=is_eventing_defer_method)
             except ValueError:  # pragma: no cover
                 continue
             else:
                 if not is_eventing_defer_method(obj):
                     continue
-
             listener_descriptions = getattr(obj, EVENTING_DEFER_METHOD_ATTR)
             assert listener_descriptions
             for emitter_name, event_name in listener_descriptions:
                 if isinstance(func, (staticmethod, classmethod)):
-                    listener = getattr(cls, listener_name)
                     # @Performance
                     get_emitter(emitter_name).add_listener(event_name, listener)
                 else:

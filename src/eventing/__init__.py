@@ -21,7 +21,11 @@ import itertools
 import operator
 import threading
 from types import FrameType
-from typing import Any, Callable, Generator, Sequence, TypeVar
+from typing import Any
+from typing import Callable
+from typing import Generator
+from typing import Sequence
+from typing import TypeVar
 import warnings
 
 from .exceptions import MissingClassMethodHandler

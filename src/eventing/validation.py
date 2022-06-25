@@ -1,6 +1,7 @@
 from functools import wraps
 from inspect import signature
-from typing import Any, Callable
+from typing import Any
+from typing import Callable
 
 
 def validate_arguments(*validators: Callable[..., None]):

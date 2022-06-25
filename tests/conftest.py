@@ -1,6 +1,9 @@
 import importlib
 import inspect
-from typing import Any, get_args, get_origin, Union
+from typing import Any
+from typing import get_args
+from typing import get_origin
+from typing import Union
 from unittest.mock import Mock
 
 import pytest

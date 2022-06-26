@@ -13,24 +13,13 @@ from asyncio import AbstractEventLoop
 from collections import defaultdict
 from collections import deque
 from contextvars import ContextVar
-import dis
-import functools
-from functools import wraps
-import inspect
-import itertools
-import operator
 import threading
-from types import FrameType
 from typing import Any
-from typing import Callable
 from typing import Generator
-from typing import Sequence
 from typing import TypeVar
 import warnings
 
-from .exceptions import MissingClassMethodHandler
 from .exceptions import NoEventLoopError
-from .exceptions import NotAClassError
 from .validation import event_name_validator
 from .validation import validate_arguments
 
@@ -100,68 +89,8 @@ class Manager:
 
 T = TypeVar("T")
 
-
-def __dummy_init__(self, *args, **kwargs) -> None:
-    super(self.__class__.__mro__[0], self).__init__(*args, **kwargs)
-
-
-def _add_instance_listeners(
-    cls: type[T], instance_listeners: Sequence[tuple[str, str, str]]
-):
-    __init__ = vars(cls).get("__init__", __dummy_init__)
-
-    @wraps(__init__)
-    def wrapper(self: T, *args, **kwargs) -> None:
-        __init__(self, *args, **kwargs)
-        for emitter_name, event_name, method_name in instance_listeners:
-            instance_listener = getattr(self, method_name)
-            get_emitter(emitter_name).add_listener(event_name, instance_listener)
-
-    return wrapper
-
-
-ListenerT = Callable[..., Any]
-
-
-def wrapped_with_method_defer(
-    emitter_name: str, event_name: str, listener: ListenerT
-) -> ListenerT:
-    # See if we've previously decorated it, in which case,
-    # just append our new addition
-    try:
-        func = inspect.unwrap(listener, stop=is_eventing_defer_method)
-    except ValueError:  # pragma: no cover
-        previously_wrapped = False
-    else:
-        previously_wrapped = is_eventing_defer_method(func)
-
-    if previously_wrapped:
-        getattr(func, EVENTING_DEFER_METHOD_ATTR).append((emitter_name, event_name))
-        return func
-    else:
-        if asyncio.iscoroutinefunction(listener):
-
-            async def wrapper(*args, **kwargs):
-                return await listener(*args, **kwargs)
-
-        else:
-
-            def wrapper(*args, **kwargs):
-                return listener(*args, **kwargs)
-
-        functools.update_wrapper(wrapper, listener)
-        setattr(wrapper, EVENTING_DEFER_METHOD_ATTR, [(emitter_name, event_name)])
-        return wrapper
-
-
 DeferredEmitItem = tuple[str, tuple, dict[str, Any]]
 DeferredEmits = deque[DeferredEmitItem]
-
-EVENTING_DEFER_METHOD_ATTR = "__eventing_defer_method__"
-
-
-def is_eventing_defer_method(func):
-    return hasattr(func, EVENTING_DEFER_METHOD_ATTR)
 
 
 class EventEmitter:
@@ -267,139 +196,11 @@ class EventEmitter:
         else:
             listener(*args, **kwargs)
 
-    def _check_if_class_has_decorator(
-        self,
-        class_creation_frame: FrameType,
-        class_decorator_instructions: deque[dis.Instruction],
-        decorator_func,
-    ) -> None:
-        tos = None
-        f_locals = class_creation_frame.f_locals
-        f_globals = class_creation_frame.f_globals
-        for instr in class_decorator_instructions:
-            obj = None
-            # TODO: this is not exhaustive
-            if instr.opname in ["LOAD_NAME", "LOAD_DEREF", "LOAD_GLOBAL", "LOAD_FAST"]:
-                try:
-                    obj = f_locals[instr.argval]
-                except KeyError:
-                    obj = f_globals[instr.argval]
-            elif instr.opname == "LOAD_ATTR":
-                obj = getattr(tos, instr.argval)
-
-            if obj is not None:
-                if obj == decorator_func:
-                    break
-                tos = obj
-
-        else:
-            raise MissingClassMethodHandler(
-                "`method=True` but class not decorated with `@ee.handle_methods`"
-            )
-
-    def _check_if_method_and_class_has_decorator(
-        self, decorator_frame: FrameType, decorator_func
-    ) -> None:
-        class_frame = decorator_frame.f_back
-        if class_frame is None:  # pragma: no cover
-            raise NotAClassError
-
-        class_creation_frame = class_frame.f_back
-        if class_creation_frame is None:  # pragma: no cover
-            # Then we can't possibly be in a class because the stack isn't deep enough
-            raise NotAClassError
-        class_code = class_frame.f_code
-
-        op = functools.partial(operator.is_not, class_code)
-        # Get all previously run instructions up to where the class code was executed
-        instructions = deque(
-            itertools.takewhile(op, dis.get_instructions(class_creation_frame.f_code))
-        )
-
-        class_decorator_instructions: deque[dis.Instruction] = deque()
-        part_of_class = False
-        try:
-            # iterate backwards
-            while instr := instructions.pop():  # pragma: no branch
-                if not part_of_class:
-                    if instr.opname == "LOAD_BUILD_CLASS":
-                        part_of_class = True
-                else:
-                    if instr.opname.startswith("STORE_"):
-                        break
-                    else:
-                        # put the back in normal order
-                        class_decorator_instructions.appendleft(instr)
-        except IndexError:
-            if not part_of_class:
-                raise NotAClassError from None
-
-        self._check_if_class_has_decorator(
-            class_creation_frame, class_decorator_instructions, decorator_func
-        )
-
-    def handle_methods(self, cls: type[T]) -> type[T]:
-        instance_listeners = []
-        found_listeners = False
-        for listener_name, func in vars(cls).items():
-            if not inspect.isroutine(func):
-                continue
-            # in 3.9 classmethod and staticmethod doesn't inherit method attributes
-            # and __wrapped__ is required for unwrap to work
-            listener = getattr(cls, listener_name)
-            try:
-                obj = inspect.unwrap(listener, stop=is_eventing_defer_method)
-            except ValueError:  # pragma: no cover
-                continue
-            else:
-                if not is_eventing_defer_method(obj):
-                    continue
-            listener_descriptions = getattr(obj, EVENTING_DEFER_METHOD_ATTR)
-            assert listener_descriptions
-            for emitter_name, event_name in listener_descriptions:
-                if isinstance(func, (staticmethod, classmethod)):
-                    # @Performance
-                    get_emitter(emitter_name).add_listener(event_name, listener)
-                else:
-                    instance_listeners.append((emitter_name, event_name, listener_name))
-
-            found_listeners = True
-
-        if instance_listeners:
-            setattr(
-                cls,
-                "__init__",
-                _add_instance_listeners(cls, instance_listeners),
-            )
-
-        if not found_listeners:
-            warnings.warn(
-                "@ee.handle_methods wrapped class without any listeners to setup.\n"
-                "    Hint: did you forget `@ee.on(..., method=True)`"
-            )
-
-        return cls
-
     @validate_arguments(event_name_validator)
-    def on(self, event_name: str, /, *, method: bool = False):
+    def on(self, event_name: str, /):
         def inner(listener):
-            if not method:
-                self._on(event_name, listener)
-                return listener
-            else:
-                frame = inspect.currentframe()
-                try:
-                    self._check_if_method_and_class_has_decorator(
-                        frame, self.handle_methods
-                    )
-                except NotAClassError:
-                    raise ValueError(
-                        "`method=True` may only be used on methods of a class"
-                    ) from None
-                finally:
-                    del frame
-
-            return wrapped_with_method_defer(self.name, event_name, listener)
+            self._on(event_name, listener)
+            return listener
 
         return inner
 

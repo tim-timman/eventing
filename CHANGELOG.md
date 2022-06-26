@@ -8,9 +8,31 @@ and this project adheres to [Semantic Versioning][semver].
 [semver]: https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
-### Fixed
-- Overriding class method incorrectly added the overriding method as listener,
-  regardless of being decorated as one or not.
+### Removed
+- Decorating methods with `@ee.on(..., method=True)` and `@ee.handle_methods`.
+  It broke decorator expectations, where decorator order no longer mattered, and
+  was very complicated. I'm not ruling out something similar yet, but the API
+  needs to be clearer and less "magic". If you want to use method listeners you
+  could do something like this:
+  ```python
+  class Foo:
+      def __init__(self):
+          ee.add_listener("foo", self.instance_listener)
+
+      def instance_listener(self):
+          ...
+
+      @classmethod
+      def class_listener(cls):
+          ...
+
+      @staticmethod
+      def static_listener():
+          ...
+
+  ee.add_listener("foo", Foo.class_listener)
+  ee.add_listener("foo", Foo.static_listener)
+  ```
 
 ## [0.3.0] - 2022-06-17
 ### Added
